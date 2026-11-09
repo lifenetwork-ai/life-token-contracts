@@ -24,8 +24,9 @@ contract LateGrantHandler is Test {
         t.transfer(address(f),5_000_000_000e18);
         t.transfer(address(e),3_100_000_000e18);
         t.transfer(address(d),1_900_000_000e18);
-        assertEq(f.createGrant(2,address(13),1_000_000_000e18),bytes32(uint256(1)));
-        assertEq(f.createGrant(3,address(14),1_500_000_000e18),bytes32(uint256(2)));
+        assertEq(f.createGrant(2,address(13),800_000_000e18),bytes32(uint256(1)));
+        assertEq(f.createGrant(3,address(14),1_000_000_000e18),bytes32(uint256(2)));
+        assertEq(f.createGrant(4,address(15),700_000_000e18),bytes32(uint256(3)));
         f.seal();d.setAllocation(address(55),1_900_000_000e18);d.seal();r.setTGE(T);
     }
     function vault() external view returns(LIFEVestingVault){ return f; }
@@ -44,7 +45,7 @@ contract LateGrantHandler is Test {
     function advance(uint32 step) external {vm.warp(block.timestamp+bound(step,0,180 days));}
     function earned(uint256 i) public view returns(uint256 result){
         Ledger storage l=ledgers[i];uint256 carry;
-        for(uint256 k=1;k<=48;++k){if(block.timestamp<uint256(l.start)+(12+k)*30 days)break;result+=l.allocation/48;carry+=l.allocation%48;if(carry>=48){++result;carry-=48;}}
+        for(uint256 k=1;k<=48;++k){if(block.timestamp<uint256(l.start)+(k<12?12:k)*30 days)break;result+=l.allocation/48;carry+=l.allocation%48;if(carry>=48){++result;carry-=48;}}
     }
     function settle(uint256 i) private {Ledger storage l=ledgers[i];uint256 v=earned(i);l.credits[l.redirected?1:0]+=v-l.seen;l.seen=v;}
     function claim(uint256 seed,bool foundation) external {

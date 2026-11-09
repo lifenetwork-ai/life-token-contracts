@@ -24,6 +24,8 @@ contract LIFEVestingVaultTest is Test {
     LIFEEmissionVault emission;
     TGEDistributionVault distribution;
     bytes32 constant ID = bytes32(uint256(1));
+    bytes32 constant TEAM_ID = bytes32(uint256(6));
+    address constant TEAM = address(0x116);
     function params(uint256, bool) internal view returns (LIFEVestingVault.InitParams memory) {
         return LIFEVestingVault.InitParams(token, address(this), foundation, address(lock), guardian);
     }
@@ -43,9 +45,10 @@ contract LIFEVestingVaultTest is Test {
         token.transfer(address(vault), 5_000_000_000e18);
         assertEq(vault.createGrant(0, investor, 480e18), ID);
         assertEq(vault.createGrant(1, address(112), 500_000_000e18), bytes32(uint256(2)));
-        assertEq(vault.createGrant(2, address(113), 1_000_000_000e18), bytes32(uint256(3)));
-        assertEq(vault.createGrant(3, address(114), 1_500_000_000e18), bytes32(uint256(4)));
+        assertEq(vault.createGrant(2, address(113), 800_000_000e18), bytes32(uint256(3)));
+        assertEq(vault.createGrant(3, address(114), 1_000_000_000e18), bytes32(uint256(4)));
         assertEq(vault.createGrant(0, investor, 2_000_000_000e18 - 480e18), bytes32(uint256(5)));
+        assertEq(vault.createGrant(4, TEAM, 700_000_000e18), TEAM_ID);
         vault.seal();
         token.transfer(address(emission), 3_100_000_000e18);
         token.transfer(address(distribution), 1_900_000_000e18);
@@ -57,10 +60,10 @@ contract LIFEVestingVaultTest is Test {
     function test_ClaimOnlyPaysAccountWallet() public {
         vm.warp(T + 13 * 30 days);
         vm.prank(address(99));
-        assertEq(vault.claim(ID, LIFEVestingVault.Account.Investor), 10e18);
-        assertEq(token.balanceOf(investor), 10e18);
+        assertEq(vault.claim(ID, LIFEVestingVault.Account.Investor), 130e18);
+        assertEq(token.balanceOf(investor), 130e18);
         assertEq(token.balanceOf(address(99)), 0);
-        assertEq(vault.details(ID).paid, 10e18);
+        assertEq(vault.details(ID).paid, 130e18);
     }
 
     function test_ClaimZeroIsNoop() public {
@@ -70,9 +73,9 @@ contract LIFEVestingVaultTest is Test {
 
     function test_LateClaimAccumulates() public {
         vm.warp(T + 24 * 30 days);
-        assertEq(vault.claimable(ID, LIFEVestingVault.Account.Investor), 120e18);
+        assertEq(vault.claimable(ID, LIFEVestingVault.Account.Investor), 240e18);
         vault.claim(ID, LIFEVestingVault.Account.Investor);
-        assertEq(token.balanceOf(investor), 120e18);
+        assertEq(token.balanceOf(investor), 240e18);
         assertEq(vault.claim(ID, LIFEVestingVault.Account.Investor), 0);
     }
 
@@ -101,7 +104,7 @@ contract LIFEVestingVaultTest is Test {
         vm.expectRevert();
         vault.claim(bytes32(uint256(3)), LIFEVestingVault.Account.Foundation);
         vm.warp(T + 123 * 30 days);
-        assertEq(vault.claim(bytes32(uint256(3)), LIFEVestingVault.Account.Investor), 1_000_000_000e18);
+        assertEq(vault.claim(bytes32(uint256(3)), LIFEVestingVault.Account.Investor), 800_000_000e18);
     }
     function test_UnderfundedRevertsWithoutAccountingChange() public {
         deal(address(token), address(vault), 0);
@@ -132,5 +135,37 @@ contract LIFEVestingVaultTest is Test {
         vm.warp(T + 60 * 30 days);
         assertEq(vault.claim(ID, LIFEVestingVault.Account.Investor), 480e18);
         assertEq(vault.claim(other, LIFEVestingVault.Account.Investor), 2_000_000_000e18 - 480e18);
+    }
+
+    /// Investors/Advisors: nothing before Month 12, 25% at the Month 12 boundary,
+    /// then 1/48 per month until fully vested at Month 48.
+    function test_InvestorCliffUnlockBoundaries() public {
+        vm.warp(T + 12 * 30 days - 1);
+        assertEq(vault.claimable(ID, LIFEVestingVault.Account.Investor), 0);
+        vm.warp(T + 12 * 30 days);
+        assertEq(vault.claimable(ID, LIFEVestingVault.Account.Investor), 120e18);
+        vm.warp(T + 47 * 30 days);
+        assertEq(vault.claimable(ID, LIFEVestingVault.Account.Investor), 470e18);
+        vm.warp(T + 48 * 30 days);
+        assertEq(vault.claimable(ID, LIFEVestingVault.Account.Investor), 480e18);
+    }
+
+    /// Team: nonrevocable, 12-month cliff, then 1/48 per month from Month 13 through Month 60.
+    function test_TeamCliffLinearAndNonrevocable() public {
+        assertFalse(vault.details(TEAM_ID).revocable);
+        assertEq(vault.details(TEAM_ID).wallets[1], address(0));
+        vm.expectRevert();
+        vault.claim(TEAM_ID, LIFEVestingVault.Account.Foundation);
+        vm.expectRevert();
+        vault.redirectToFoundation(TEAM_ID, true, "x");
+        vm.warp(T + 12 * 30 days);
+        assertEq(vault.claimable(TEAM_ID, LIFEVestingVault.Account.Investor), 0);
+        vm.warp(T + 13 * 30 days);
+        assertEq(vault.claimable(TEAM_ID, LIFEVestingVault.Account.Investor), uint256(700_000_000e18) / 48);
+        vm.warp(T + 60 * 30 days - 1);
+        assertEq(vault.claimable(TEAM_ID, LIFEVestingVault.Account.Investor), uint256(700_000_000e18) * 47 / 48);
+        vm.warp(T + 60 * 30 days);
+        assertEq(vault.claim(TEAM_ID, LIFEVestingVault.Account.Investor), 700_000_000e18);
+        assertEq(token.balanceOf(TEAM), 700_000_000e18);
     }
 }

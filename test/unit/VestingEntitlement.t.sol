@@ -17,7 +17,7 @@ contract VestingEntitlementTest is LIFEVestingVaultTest {
         assertEq(vault.claim(ID, LIFEVestingVault.Account.Investor), 40e18);
         assertEq(vault.claim(ID, LIFEVestingVault.Account.Foundation), 0);
         vm.warp(T + 60 * 30 days);
-        assertEq(vault.claim(ID, LIFEVestingVault.Account.Foundation), 360e18);
+        assertEq(vault.claim(ID, LIFEVestingVault.Account.Foundation), 240e18);
         assertEq(vault.details(ID).paid, 480e18);
     }
 
@@ -27,7 +27,7 @@ contract VestingEntitlementTest is LIFEVestingVaultTest {
         assertEq(vault.details(ID).credit[0], 0);
         assertEq(vault.details(ID).credit[1], 40e18);
         assertEq(vault.claim(ID, LIFEVestingVault.Account.Foundation), 40e18);
-        assertEq(token.balanceOf(investor), 80e18);
+        assertEq(token.balanceOf(investor), 200e18);
     }
 
     function test_RestoreIsProspective() public {
@@ -47,7 +47,7 @@ contract VestingEntitlementTest is LIFEVestingVaultTest {
         vault.claim(ID, LIFEVestingVault.Account.Investor);
         vault.redirectToFoundation(ID, true, "end");
         assertEq(vault.claim(ID, LIFEVestingVault.Account.Foundation), 0);
-        assertEq(token.balanceOf(investor), 120e18);
+        assertEq(token.balanceOf(investor), 240e18);
     }
 
     function test_EntitlementAuthorizationAndState() public {
@@ -76,7 +76,7 @@ contract VestingEntitlementTest is LIFEVestingVaultTest {
         vault.acceptWalletChange(ID, LIFEVestingVault.Account.Investor, 1);
         assertEq(vault.claim(ID, LIFEVestingVault.Account.Investor), 40e18);
         assertEq(token.balanceOf(address(44)), 40e18);
-        assertEq(token.balanceOf(investor), 80e18);
+        assertEq(token.balanceOf(investor), 200e18);
         vm.prank(investor);
         vm.expectRevert();
         vault.proposeWalletChange(ID, LIFEVestingVault.Account.Investor, address(45));

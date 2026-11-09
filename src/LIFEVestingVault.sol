@@ -57,7 +57,7 @@ contract LIFEVestingVault is Initializable, UUPSUpgradeable, PausableUpgradeable
         LIFEEmissionVault emission;
         TGEDistributionVault distribution;
         bool isSealed;
-        uint256[4] allocated;
+        uint256[5] allocated;
         uint256 totalAllocated;
         uint256 totalPaid;
         uint256 grantCount;
@@ -137,11 +137,14 @@ contract LIFEVestingVault is Initializable, UUPSUpgradeable, PausableUpgradeable
         emit Configured(address(r), address(e), address(d));
     }
 
+    /// @notice Categories: 0 Investors, 1 Advisors (revocable, late grants allowed),
+    ///         2 Foundation, 3 Ecosystem, 4 Team (nonrevocable, fully assigned before seal).
     function cap(uint8 category) public pure returns (uint256) {
         if (category == 0) return 2_000_000_000e18;
         if (category == 1) return 500_000_000e18;
-        if (category == 2) return 1_000_000_000e18;
-        if (category == 3) return 1_500_000_000e18;
+        if (category == 2) return 800_000_000e18;
+        if (category == 3) return 1_000_000_000e18;
+        if (category == 4) return 700_000_000e18;
         revert InvalidGrant();
     }
 
@@ -220,8 +223,10 @@ contract LIFEVestingVault is Initializable, UUPSUpgradeable, PausableUpgradeable
         g.category = category;
         g.wallets = [beneficiary, revocable_ ? s.foundationWallet : address(0)];
         g.allocation = amount;
-        g.cliffMonths = revocable_ ? 12 : 3;
-        g.periods = revocable_ ? 48 : 120;
+        // Investors/Advisors and Team: 12-month cliff over 48 months; Foundation/Ecosystem: 3 over 120.
+        bool longCliff = revocable_ || category == 4;
+        g.cliffMonths = longCliff ? 12 : 3;
+        g.periods = longCliff ? 48 : 120;
         g.revocable = revocable_;
         s.allocated[category] += amount;
         s.totalAllocated = newTotal;
@@ -233,7 +238,7 @@ contract LIFEVestingVault is Initializable, UUPSUpgradeable, PausableUpgradeable
     function seal() external onlyGovernance whenNotPaused {
         SystemView storage s = _state().info;
         if (address(s.registry) == address(0) || s.isSealed || s.registry.tge() != 0) revert InvalidState();
-        for (uint8 i = 2; i < 4; ++i) {
+        for (uint8 i = 2; i < 5; ++i) {
             if (s.allocated[i] != cap(i)) revert InvalidState();
         }
         if (s.token.balanceOf(address(this)) < VESTING_BUDGET - s.totalPaid) revert InsufficientFunding();
@@ -304,6 +309,9 @@ contract LIFEVestingVault is Initializable, UUPSUpgradeable, PausableUpgradeable
         Grant storage s = _grant(id);
         uint64 tge = _state().info.registry.tge();
         if (tge == 0 || t < tge) return 0;
+        // Revocable (Investor/Advisor) grants unlock the elapsed share at the cliff;
+        // other categories vest linearly after the cliff.
+        if (s.revocable) return VestingMath.cliffUnlockVested(s.allocation, grantStart(id), t, s.cliffMonths, s.periods);
         return VestingMath.monthlyVested(s.allocation, grantStart(id), t, s.cliffMonths, s.periods);
     }
 

@@ -10,7 +10,7 @@ contract ConfigurationEdgesTest is VestingUpgradeTest {
 
         assertEq(vault.details(ID).allocation,480e18);assertEq(vault.details(ID).settledVested,0);assertTrue(vault.details(ID).revocable);
         assertEq(vault.system().upgradeTimelock,address(lock));assertEq(vault.system().emergencyPauser,guardian);
-        assertEq(vault.vestedAt(ID, T+24*30 days),120e18);
+        assertEq(vault.vestedAt(ID, T+24*30 days),240e18);
     }
     function test_CancelRequiresCurrentWalletAndNonce() public {
         vm.expectRevert();vault.cancelWalletChange(ID, LIFEVestingVault.Account.Investor,1);

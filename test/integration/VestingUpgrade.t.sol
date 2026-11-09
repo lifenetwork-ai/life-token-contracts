@@ -21,7 +21,7 @@ contract VestingUpgradeTest is LIFEVestingVaultTest {
         vault.pause();
         assertTrue(vault.paused());
         vm.warp(T + 24 * 30 days);
-        assertEq(vault.claimable(ID, LIFEVestingVault.Account.Investor), 120e18);
+        assertEq(vault.claimable(ID, LIFEVestingVault.Account.Investor), 240e18);
         vm.expectRevert();
         vault.claim(ID, LIFEVestingVault.Account.Investor);
         vm.expectRevert();
@@ -43,7 +43,7 @@ contract VestingUpgradeTest is LIFEVestingVaultTest {
         queue(address(vault), data, "unpause");
         vm.warp(block.timestamp + 48 hours);
         execute(address(vault), data, "unpause");
-        assertEq(vault.claim(ID, LIFEVestingVault.Account.Investor), 120e18);
+        assertEq(vault.claim(ID, LIFEVestingVault.Account.Investor), 240e18);
     }
 
     function test_UpgradeDelayAndStatePreservation() public {
@@ -79,7 +79,7 @@ contract VestingUpgradeTest is LIFEVestingVaultTest {
         assertEq(vault.claim(ID, LIFEVestingVault.Account.Investor), 40e18);
         assertEq(token.balanceOf(address(55)), 40e18);
         vm.warp(T + 60 * 30 days);
-        assertEq(vault.claim(ID, LIFEVestingVault.Account.Foundation), 360e18);
+        assertEq(vault.claim(ID, LIFEVestingVault.Account.Foundation), 240e18);
         assertEq(vault.details(ID).paid, 480e18);
         assertEq(token.totalSupply(), 10_000_000_000e18);
     }

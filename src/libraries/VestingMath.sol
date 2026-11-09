@@ -18,6 +18,22 @@ library VestingMath {
         return allocation * k / periods;
     }
 
+    /// @dev Cliff-unlock schedule: nothing before the cliff month; at the cliff the elapsed
+    ///      share (cliffMonths/periods) unlocks at once, then 1/periods per month until fully
+    ///      vested at month `periods`. Investors/Advisors use cliff 12, periods 48: 25% at
+    ///      Month 12, then 1/48 per month through Month 48.
+    function cliffUnlockVested(uint256 allocation, uint64 start, uint64 timestamp, uint16 cliffMonths, uint16 periods)
+        internal
+        pure
+        returns (uint256)
+    {
+        if (start == 0 || timestamp < start) return 0;
+        uint256 m = (timestamp - start) / MONTH;
+        if (m < cliffMonths) return 0;
+        if (m >= periods) return allocation;
+        return allocation * m / periods;
+    }
+
     function emissionVested(uint64 tge, uint64 timestamp) internal pure returns (uint256 vested) {
         if (tge == 0 || timestamp < tge) return 0;
         uint256 m = (timestamp - tge) / MONTH;

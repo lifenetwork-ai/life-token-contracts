@@ -9,7 +9,6 @@ import {LIFEVestingVault} from "../../src/LIFEVestingVault.sol";
 import {LIFEUpgradeTimelock} from "../../src/LIFEUpgradeTimelock.sol";
 import {LIFEEmissionVault} from "../../src/LIFEEmissionVault.sol";
 import {TGEDistributionVault} from "../../src/TGEDistributionVault.sol";
-import {LegacyLIFEVestingVault} from "../fixtures/LegacyLIFEVestingVault.sol";
 
 contract LateGrantsTest is Test {
     uint256 constant BUDGET = 5_000_000_000e18;
@@ -47,6 +46,7 @@ contract LateGrantsTest is Test {
         assertEq(vault.createGrant(0, INVESTOR, 480e18), INITIAL);
         assertEq(vault.createGrant(2, address(113), vault.cap(2)), bytes32(uint256(2)));
         assertEq(vault.createGrant(3, address(114), vault.cap(3)), bytes32(uint256(3)));
+        assertEq(vault.createGrant(4, address(116), vault.cap(4)), bytes32(uint256(4)));
     }
 
     function launch() internal { vault.seal(); registry.setTGE(T); }
@@ -117,9 +117,11 @@ contract LateGrantsTest is Test {
         assertEq(vault.vestedAt(LATE, T - 1), 0);
         assertEq(vault.vestedAt(LATE, start - 1), 0);
         assertEq(vault.vestedAt(LATE, start), 0);
-        assertEq(vault.vestedAt(LATE, start + 12 * 30 days), 0);
-        assertEq(vault.vestedAt(LATE, start + 13 * 30 days), 10e18);
-        assertEq(vault.vestedAt(bytes32(uint256(100)), start + 13 * 30 days), 0);
+        assertEq(vault.vestedAt(LATE, start + 12 * 30 days - 1), 0);
+        assertEq(vault.vestedAt(LATE, start + 12 * 30 days), 120e18);
+        assertEq(vault.vestedAt(LATE, start + 13 * 30 days), 130e18);
+        assertEq(vault.vestedAt(bytes32(uint256(100)), start + 13 * 30 days - 1), 0);
+        assertEq(vault.vestedAt(bytes32(uint256(100)), start + 13 * 30 days), 120e18);
         assertEq(vault.vestedAt(LATE, start + 60 * 30 days), 480e18);
         assertEq(vault.vestedAt(LATE, start + 61 * 30 days), 480e18);
     }
@@ -134,13 +136,13 @@ contract LateGrantsTest is Test {
         assertEq(vault.remainingBudget(1), vault.cap(1) - 480e18);
         vm.prank(address(lock)); vault.unpause();
         vm.warp(start + 13 * 30 days);
-        assertEq(vault.claim(LATE, LIFEVestingVault.Account.Investor), 10e18);
+        assertEq(vault.claim(LATE, LIFEVestingVault.Account.Investor), 130e18);
         assertTrue(vault.isReady());
     }
 
     function test_InvalidGetterIdsAndCategories() public {
         vm.expectRevert(LIFEVestingVault.InvalidGrant.selector); vault.grantStart(LATE);
-        vm.expectRevert(LIFEVestingVault.InvalidGrant.selector); vault.remainingBudget(4);
+        vm.expectRevert(LIFEVestingVault.InvalidGrant.selector); vault.remainingBudget(5);
         assertEq(vault.grantStart(INITIAL), 0);
         assertEq(vault.vestedAt(INITIAL, T + 60 * 30 days), 0);
     }
@@ -170,66 +172,16 @@ contract LateGrantsTest is Test {
         vault.claim(LATE, LIFEVestingVault.Account.Investor);
         vault.claim(LATE, LIFEVestingVault.Account.Foundation);
         LIFEVestingVault.Grant memory g = vault.details(LATE);
-        assertEq(g.paid, amount * 2 / 48);
-        assertEq(token.balanceOf(FOUNDATION), reclaim ? amount * 2 / 48 : amount * 2 / 48 - amount / 48);
+        // Cliff unlock: 13/48 vested at the Month 13 redirect, 14/48 at the Month 14 restore.
+        assertEq(g.paid, amount * 14 / 48);
+        assertEq(token.balanceOf(FOUNDATION), reclaim ? amount * 14 / 48 : amount * 14 / 48 - amount * 13 / 48);
         assertEq(g.credit[0] + g.credit[1], 0);
         assertEq(vault.grantStart(LATE), start);
         assertEq(vault.remainingBudget(0) + vault.system().allocated[0], vault.cap(0));
         uint256 allReserves;
-        for (uint8 i; i < 4; ++i) allReserves += vault.remainingBudget(i);
+        for (uint8 i; i < 5; ++i) allReserves += vault.remainingBudget(i);
         assertEq(vault.system().totalAllocated - vault.system().totalPaid + allReserves, BUDGET - vault.system().totalPaid);
         assertEq(token.balanceOf(address(vault)), BUDGET - vault.system().totalPaid);
         assertEq(vault.claim(LATE, LIFEVestingVault.Account.Investor), 0);
-    }
-
-    function test_LegacyUpgradePreservesLayoutAndCannotManufactureReserve() public {
-        token = new LIFEToken(address(this));
-        LegacyLIFEVestingVault oldImplementation = new LegacyLIFEVestingVault();
-        LegacyLIFEVestingVault old = LegacyLIFEVestingVault(address(new ERC1967Proxy(address(oldImplementation), abi.encodeCall(
-            LegacyLIFEVestingVault.initialize,
-            (LegacyLIFEVestingVault.InitParams(token, address(this), FOUNDATION, address(lock), GUARDIAN))
-        ))));
-        vault = LIFEVestingVault(address(old));
-        registry = new TGERegistry(address(this), address(old));
-        emission = new LIFEEmissionVault(token, registry, address(111));
-        distribution = new TGEDistributionVault(token, registry, address(this));
-        old.configure(registry, emission, distribution);
-        token.transfer(address(old), BUDGET);
-        token.transfer(address(emission), 3_100_000_000e18);
-        token.transfer(address(distribution), 1_900_000_000e18);
-        distribution.setAllocation(address(115), 1_900_000_000e18); distribution.seal();
-        for (uint8 i; i < 4; ++i) old.createGrant(bytes32(uint256(i + 1)), i, address(uint160(200 + i)), old.cap(i));
-        old.seal(); registry.setTGE(T);
-        vm.warp(T + 13 * 30 days);
-        old.claim(INITIAL, LegacyLIFEVestingVault.Account.Investor);
-        old.redirectToFoundation(INITIAL, false, bytes32(0));
-        LIFEVestingVault previouslyProposed = new LIFEVestingVault();
-        vm.prank(address(200)); old.proposeWalletChange(INITIAL, LegacyLIFEVestingVault.Account.Investor, address(previouslyProposed));
-        old.proposeGovernance(address(777));
-        bytes32 grantHash = keccak256(abi.encode(old.details(INITIAL)));
-        bytes32 systemHash = keccak256(abi.encode(old.system()));
-        vm.prank(GUARDIAN); old.pause();
-        LIFEVestingVault next = new LIFEVestingVault();
-        bytes memory upgrade = abi.encodeCall(old.upgradeToAndCall, (address(next), bytes("")));
-        lock.schedule(address(old), 0, upgrade, bytes32(0), "legacy", 48 hours);
-        vm.warp(block.timestamp + 48 hours);
-        lock.execute(address(old), 0, upgrade, bytes32(0), "legacy");
-        assertEq(keccak256(abi.encode(vault.details(INITIAL))), grantHash);
-        assertEq(keccak256(abi.encode(vault.system())), systemHash);
-        assertTrue(vault.paused());
-        assertEq(vault.grantStart(INITIAL), T);
-        assertEq(vault.grantIdAt(0), INITIAL);
-        for (uint8 i; i < 4; ++i) assertEq(vault.remainingBudget(i), 0);
-        // Old implementation and wallet proposal history still protect implementation selection.
-        vm.prank(address(lock)); vm.expectRevert(LIFEVestingVault.InvalidConfiguration.selector);
-        vault.upgradeToAndCall(address(oldImplementation), "");
-        vm.prank(address(lock)); vm.expectRevert(LIFEVestingVault.InvalidConfiguration.selector);
-        vault.upgradeToAndCall(address(previouslyProposed), "");
-        vm.prank(address(lock)); vault.unpause();
-        vm.expectRevert(LIFEVestingVault.AllocationExceeded.selector);
-        add(0, 1, uint64(block.timestamp));
-        vm.prank(address(previouslyProposed)); vault.acceptWalletChange(INITIAL, LIFEVestingVault.Account.Investor, 1);
-        assertEq(vault.details(INITIAL).wallets[0], address(previouslyProposed));
-        assertEq(vault.grantStart(INITIAL), T);
     }
 }

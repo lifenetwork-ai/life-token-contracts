@@ -18,8 +18,8 @@ contract LaunchTest is Test {
     LIFEEmissionVault e;
     TGEDistributionVault d;
     LIFEVestingVault f;
-    address[4] recipients = [address(11), address(12), address(13), address(14)];
-    bytes32[4] grants;
+    address[5] recipients = [address(11), address(12), address(13), address(14), address(15)];
+    bytes32[5] grants;
     uint64 constant T = 100000;
 
     function setUp() public virtual {
@@ -91,8 +91,8 @@ contract LaunchTest is Test {
         t.transfer(address(f), 5_000_000_000e18);
         t.transfer(address(e), 3_100_000_000e18);
         t.transfer(address(d), 1_900_000_000e18);
-        uint256[4] memory a = [uint256(2_000_000_000e18), 500_000_000e18, 1_000_000_000e18, 1_500_000_000e18];
-        for (uint8 i; i < 4; i++) {
+        uint256[5] memory a = [uint256(2_000_000_000e18), 500_000_000e18, 800_000_000e18, 1_000_000_000e18, 700_000_000e18];
+        for (uint8 i; i < 5; i++) {
             grants[i] = f.createGrant(i, recipients[i], a[i]);
             assertEq(grants[i], bytes32(uint256(i + 1)));
         }
@@ -110,17 +110,23 @@ contract LaunchTest is Test {
         assertEq(t.balanceOf(address(this)), 0);
         d.claim(address(55));
         assertEq(t.balanceOf(address(55)), 1_900_000_000e18);
-        uint256[4] memory amounts = [uint256(2_000_000_000e18), 500_000_000e18, 1_000_000_000e18, 1_500_000_000e18];
-        uint256[4] memory cumulative;
+        uint256[5] memory amounts = [uint256(2_000_000_000e18), 500_000_000e18, 800_000_000e18, 1_000_000_000e18, 700_000_000e18];
+        uint256[5] memory cumulative;
         uint256 emission;
         for (uint64 m; m <= 288; m++) {
             vm.warp(T + m * 30 days);
-            for (uint256 i; i < 4; i++) {
+            for (uint256 i; i < 5; i++) {
                 LIFEVestingVault v = f;
                 v.claim(grants[i], LIFEVestingVault.Account.Investor);
-                uint256 cliff = i < 2 ? 12 : 3;
-                uint256 n = i < 2 ? 48 : 120;
-                if (m > cliff && m <= cliff + n) cumulative[i] = amounts[i] * (m - cliff) / n;
+                if (i < 2) {
+                    // Investors/Advisors: 25% at Month 12, then 1/48 per month to Month 48.
+                    if (m >= 12 && m <= 48) cumulative[i] = amounts[i] * m / 48;
+                } else {
+                    // Team: cliff 12 over 48 months; Foundation/Ecosystem: cliff 3 over 120 months.
+                    uint256 cliff = i == 4 ? 12 : 3;
+                    uint256 n = i == 4 ? 48 : 120;
+                    if (m > cliff && m <= cliff + n) cumulative[i] = amounts[i] * (m - cliff) / n;
+                }
                 assertEq(t.balanceOf(recipients[i]), cumulative[i]);
                 assertEq(v.details(grants[i]).paid, cumulative[i]);
                 assertGe(t.balanceOf(address(f)) + f.system().totalPaid, 5_000_000_000e18);
@@ -141,7 +147,7 @@ contract LaunchTest is Test {
         f.createGrant(0, address(11), 1);
         t.transfer(address(f), 5_000_000_000e18);
         vm.expectRevert();
-        f.createGrant(4, address(11), 1);
+        f.createGrant(5, address(11), 1);
         vm.expectRevert();
         f.createGrant(0, address(11), 2_000_000_000e18 + 1);
         vm.prank(address(99));
@@ -170,6 +176,6 @@ contract LaunchTest is Test {
         v.acceptWalletChange(grants[2], LIFEVestingVault.Account.Investor, 1);
         vm.warp(T + 123 * 30 days);
         v.claim(grants[2], LIFEVestingVault.Account.Investor);
-        assertEq(t.balanceOf(address(88)), 1_000_000_000e18);
+        assertEq(t.balanceOf(address(88)), 800_000_000e18);
     }
 }

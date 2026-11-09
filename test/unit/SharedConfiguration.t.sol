@@ -19,8 +19,8 @@ contract SharedConfigurationTest is LaunchTest {
         assertFalse(other.isReady());vm.expectRevert();other.seal();
         vm.expectRevert(LIFEVestingVault.InsufficientFunding.selector);other.createGrant(0,address(11),1);
         vm.prank(address(99));vm.expectRevert();other.seal();
-        assertEq(other.cap(0),2_000_000_000e18);assertEq(other.cap(1),500_000_000e18);assertEq(other.cap(2),1_000_000_000e18);assertEq(other.cap(3),1_500_000_000e18);
-        vm.expectRevert();other.cap(4);vm.prank(address(99));vm.expectRevert();d.seal();
+        assertEq(other.cap(0),2_000_000_000e18);assertEq(other.cap(1),500_000_000e18);assertEq(other.cap(2),800_000_000e18);assertEq(other.cap(3),1_000_000_000e18);assertEq(other.cap(4),700_000_000e18);
+        vm.expectRevert();other.cap(5);vm.prank(address(99));vm.expectRevert();d.seal();
     }
 
     function test_GrantInputInventoryAndPauseGuards() public {
@@ -49,7 +49,7 @@ contract SharedConfigurationTest is LaunchTest {
 
     function test_SealRequiresOutstandingFunds() public {
         t.transfer(address(f),5_000_000_000e18);
-        for(uint8 i;i<4;++i)assertEq(f.createGrant(i,recipients[i],f.cap(i)),bytes32(uint256(i+1)));
+        for(uint8 i;i<5;++i)assertEq(f.createGrant(i,recipients[i],f.cap(i)),bytes32(uint256(i+1)));
         deal(address(t),address(f),5_000_000_000e18-1);
         vm.expectRevert(LIFEVestingVault.InsufficientFunding.selector);f.seal();assertFalse(f.system().isSealed);
     }
